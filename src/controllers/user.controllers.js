@@ -129,7 +129,7 @@ const registerUser = asyncHandler( async (req ,res) => {
     })
     const refreshAccessToken = asyncHandler(async(req,res)=>{
        const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
-       if (incomingRefreshToken) {
+       if (!incomingRefreshToken) {
           throw new apierror(401,"unauthorized request")
        }
   try {
@@ -164,8 +164,157 @@ const registerUser = asyncHandler( async (req ,res) => {
      throw apierror(401,error?.message || "invalid refrsh token")
   }
     })
+    const changeCurrentPassword = asyncHandler(async(req,res)=>{
+        const{oldPassword,newPassword} = req.body
+        
+       const user =  User.findById(req.user?._id)
+       const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
+       if (!isPasswordCorrect) {
+         throw new apierror(400,"Invalid old pass")
+       }
+       user.password = newPassword
+       await user.save({validateBeforeSave:false})
+       return res.status(200)
+       .json(new apiresponse(200,{},"Password chnaged succesfully"))
+    })
+    const getCurrentUser = asyncHandler(async(req,res) =>{
+        return res.status(200)
+        .json(200,req.user,"current user fetched succesfully")
+    })  
+        const updateAccountDetails = asyncHandler(async(req,res)=>{
+            const {fullname ,email} = req.body
+            if (!fullname || !email) {
+                throw new apierror(400,"all fields are ")
+            }
+        const user = await  User.findByIdAndUpdate(
+            req.user?._id,
+           {
+             $set:{
+                fullname:fullname,
+                emai:email
+             }
+           },
+           {new:true}    
+        ).select("-password")
+
+        return res.status(200)
+        .json(new apiresponse(200,user,"accounts details succssfully"))
+    })
+    const updateUseravatar = asyncHandler(async(req,res)=>{
+      const avatarlocalpath = req.file?.path
+      if (!avatarlocalpath) {
+        throw new apierror(400,"avatar file is missing")
+      }
+      const avatar = uploadOnCloudinary(avatarlocalpath)
+      if (!avatar.url) {
+        throw new apierror(400,"error while uploading on avatar")
+      }
+      const  user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set:{
+                avatar:avatar.url
+            }
+        },
+        {new : true}
+      ).select("-password")
+       return res.status(200)
+      .json(
+        new apiresponse(200,user,"avatar image updated successfully")
+      )
+    })
+    const UpdateCoverImage = asyncHandler(async(req,res) => {
+        const coverimagelocalpath = req.file?.path
+         if (!coverimagelocalpath) {
+        throw new apierror(400,"coverimage file is missing")
+      }
+      const coverImage = uploadOnCloudinary(coverimagelocalpath)
+      if (!coverImage.url) {
+        throw new apierror(400,"error while uploading on cover image")
+      }
+        const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set:{
+                coverImage:coverImage.url
+            }
+        },
+        {new : true}
+      ).select("-password")
+      return res.status(200)
+      .json(
+        new apiresponse(200,user,"cover image updated successfully")
+      )
+    })
+    const getChannelProfile = asyncHandler(async(req,res) => {
+        const {username} = req.params
+        if (!username?.trim()) {
+          throw new apierror(400,"username is missing")
+        }
+      const channel = await User.aggregate([{
+        $match:{
+          username:userame?.toLowerCase()
+        }
+      },{
+        $lookup:{
+          from:"subscriptions",
+          localField:"_id",
+          foreignField:"channel",
+          as: "subscribers"
+        },
+      },
+      {
+        $lookup:{
+            from:"subscriptions",
+          localField:"_id",
+          foreignField:"subscriber",
+          as: "subscriberTo"
+        }
+      },
+      {
+        $addFields:{
+          subscriberCount:{
+            $size: "$subscribers"
+          },
+          channelsSubscribedToCount:{
+            $size:"$subscribedTo"
+          },
+          isSubscribed:{
+            $cond:{
+              if :{$in: [req.user?._id, "subscribers.subscriber"]},
+              then:true,
+              else:false
+            }
+          }
+        }
+      },
+      {
+        $project:{
+          fullname:1,
+          username: 1,
+          subscriberCount:1,
+          channelsSubscribedToCount:1,
+          isSubscribed:1,
+          avatar:1,
+          coverImage:1,
+          email:1
+        }
+      }
+    ])
+    if (!channel?.length) {
+      throw new apierror(404, "Channel does not exits")  
+    }
+    return res.status(200)
+    .json(new apiresponse(200,channel[0],"User channel fetched successfully"))
+    })
 export {registerUser,
     loginUser,
     logoutUser,
-    refreshAccessToken
+    refreshAccessToken,
+    changeCurrentPassword,
+   getCurrentUser,
+   updateAccountDetails,
+  updateUseravatar,
+  UpdateCoverImage,
+  getChannelProfile
 }
